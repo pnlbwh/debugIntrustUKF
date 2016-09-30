@@ -1,0 +1,20 @@
+#+PROPERTY: exports none
+#+PROPERTY: dir report
+
+#+begin_src R :session :results none
+  library(ggplot2)
+  d <- read.csv('countsWithUniqueSite.csv', colClasses=c('factor','numeric','factor','factor'))
+  mat <- d[d$ukftype=="mat",]
+  vtk <- d[d$ukftype=="vtk",]
+  head(mat)
+#+end_src
+
+#+begin_src R :session :file report/histBySite.png :results graphics :width 1100 :exports result
+  require(gridExtra)
+  g1 <- ggplot(d, aes(x=count, fill=ukftype)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Overall Tract Count: Matlab vs C++')
+  g2 <- ggplot(mat, aes(x=count, fill=uid)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Matlab Tractography by Site')
+  grid.arrange(g1, g2, ncol=2, widths=c(12,12)) #
+#+end_src
+
+#+RESULTS:
+[[file:report/histBySite.png]]
