@@ -1,7 +1,7 @@
 #+PROPERTY: exports none
-#+PROPERTY: dir report
+#+PROPERTY: header-args :cache yes
 
-#+begin_src R :session :results none
+#+begin_src R :session :results none :cache yes
   library(ggplot2)
   d <- read.csv('countsWithUniqueSite.csv', colClasses=c('factor','numeric','factor','factor'))
   mat <- d[d$ukftype=="mat",]
@@ -9,7 +9,7 @@
   head(mat)
 #+end_src
 
-#+begin_src R :session :file report/histBySite.png :results graphics :width 1100 :exports result
+#+begin_src R :session :file report/histBySite.png :results graphics :width 1100 :exports results :cache yes
   require(gridExtra)
   g1 <- ggplot(d, aes(x=count, fill=ukftype)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Overall Tract Count: Matlab vs C++')
   g2 <- ggplot(mat, aes(x=count, fill=uid)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Matlab Tractography by Site')
@@ -18,3 +18,12 @@
 
 #+RESULTS:
 [[file:report/histBySite.png]]
+
+#+begin_src R :session :file report/tractHist200.png :results graphics :width 550 :exports results :cache yes
+library(data.table)
+d <- fread('tractsample.csv')
+ggplot(d, aes(x=length, fill=ukftype)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("INTRuST: Tract Length: Matlab vs C++")
+#+end_src
+
+#+RESULTS:
+[[file:report/tractHist200.png]]
