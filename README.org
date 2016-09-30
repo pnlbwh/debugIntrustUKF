@@ -1,12 +1,11 @@
-#+PROPERTY: exports none
-#+PROPERTY: header-args :cache yes
+# -*- org-export-babel-evaluate: nil -*-
+#+PROPERTY: header-args :exports none :cache yes
 
-#+begin_src R :session :results none :cache yes
+#+begin_src R :session :results none :exports none
   library(ggplot2)
   d <- read.csv('countsWithUniqueSite.csv', colClasses=c('factor','numeric','factor','factor'))
   mat <- d[d$ukftype=="mat",]
   vtk <- d[d$ukftype=="vtk",]
-  head(mat)
 #+end_src
 
 #+begin_src R :session :file report/histBySite.png :results graphics :width 1100 :exports results :cache yes
