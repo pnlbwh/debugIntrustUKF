@@ -1,28 +1,28 @@
 # -*- org-export-babel-evaluate: nil -*-
-#+PROPERTY: header-args :exports none :cache yes
+#+PROPERTY: header-args :exports none :cache yes :session :exports results :results graphics
 
-#+begin_src R :session :results none :exports none
+#+begin_src R :results none :exports none
+  library(data.table)
   library(ggplot2)
-  d <- read.csv('countsWithUniqueSite.csv', colClasses=c('factor','numeric','factor','factor'))
-  mat <- d[d$ukftype=="mat",]
-  vtk <- d[d$ukftype=="vtk",]
-#+end_src
-
-#+begin_src R :session :file report/histBySite.png :results graphics :width 1100 :exports results :cache yes
   require(gridExtra)
-  g1 <- ggplot(d, aes(x=count, fill=ukftype)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Overall Tract Count: Matlab vs C++')
-  g2 <- ggplot(mat, aes(x=count, fill=uid)) + geom_density(alpha=0.3) + ggtitle('INTRuST: Matlab Tractography by Site')
-  grid.arrange(g1, g2, ncol=2, widths=c(12,12)) #
+  fc <- fread('_data/fiber_counts.csv', colClasses=c('factor','factor','numeric'))
+  fl <- fread('_data/fiber_lengths_sample.csv', colClasses=c('factor','factor','numeric'))
 #+end_src
 
-#+RESULTS:
-[[file:report/histBySite.png]]
-
-#+begin_src R :session :file report/tractHist200.png :results graphics :width 550 :exports results :cache yes
-library(data.table)
-d <- fread('tractsample.csv')
-ggplot(d, aes(x=length, fill=ukftype)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("INTRuST: Tract Length: Matlab vs C++")
+#+begin_src R :file report/fiber_counts.png :height 1500 :width 750
+  g1 <- ggplot(d, aes(x=count, fill=ukftype)) + geom_density(alpha=0.3) + ggtitle('Whole Brain Fiber Count: Matlab vs C++')
+  g2 <- ggplot(d[ukftype=="mat"], aes(x=count, fill=siteid)) + geom_density(alpha=0.3) + ggtitle('Whole Brain Fiber Count by Site: Matlab')
+  grid.arrange(g1, g2, ncol=1, nrow=2) #
 #+end_src
 
-#+RESULTS:
-[[file:report/tractHist200.png]]
+#+RESULTS[7545f88b39f251ed666711ad7251002cc8507b21]:
+[[file:report/fiber_counts.png]]
+
+#+begin_src R :session :file report/fiber_lengths.png :results graphics :width 550 :exports results :cache yes :width 750 :height 1500
+g1b <- ggplot(fl[ukftype=="vtk"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: C++")
+g2b <- ggplot(fl[ukftype=="mat"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: Matlab")
+grid.arrange(g1b, g2b, ncol=1) #
+#+end_src
+
+#+RESULTS[af71e97c8f4e80dba2af633669601cde3f127d20]:
+[[file:report/fiber_lengths.png]]
