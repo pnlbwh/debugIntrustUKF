@@ -1,5 +1,4 @@
 source $int/harmonized-newquery/SetUpData.sh
 
-# mat
-matlengths=$case.tractlengths.mat.txt
-vtklengths=$case.tractlengths.vtk.txt
+matlengths=_data/tractlengths/$case.tractlengths.mat.txt
+vtklengths=_data/tractlengths/$case.tractlengths.vtk.txt
