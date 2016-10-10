@@ -49,7 +49,8 @@ instance Rule OutputKey Double where
 
 getPath :: String -> CaseId -> FilePath
 getPath var siteid =
-  let base = "/Users/ryan/partners/data/pnl/INTRuST/"
+  {-let base = "/Users/ryan/partners/data/pnl/INTRuST/"-}
+  let base = "/data/pnl/INTRuST/"
   in case var of
     "fsindwi" -> printf (base </> "%s/diff/%s.fsindwi.nrrd") siteid siteid
     "caselist" -> (base </> "caselist.txt")
@@ -66,8 +67,7 @@ makeTarget q@(OutputKey (outputtype, caseid)) =
         cmd Shell $ "\
         \export PYTHONPATH=;\
         \source /data/pnl/soft/anaconda3/bin/activate py27;\
-        \case=%s && source SetUpData.sh;\
-        \./scripts/famask.py " ++ unwords [fsindwi, out]
+        \./src/famask.py " ++ unwords [fsindwi, out]
     where
       out = getFile q
       fsindwi = getPath "fsindwi" caseid
