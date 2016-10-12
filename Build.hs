@@ -1,130 +1,75 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE ConstraintKinds     #-}
-import Development.Shake
-import Development.Shake.Command
-import Development.Shake.FilePath
-import Development.Shake.Util
-import Development.Shake.Rule
-import Development.Shake.Classes
-import Text.Printf
-import           GHC.Generics
-import Data.Time (UTCTime (..), utctDayTime)
-import System.Directory as IO
-
-getModTime :: FilePath -> IO Double
-getModTime = fmap utcToDouble . getModificationTime
-  where
-    utcToDouble = fromRational . toRational . utctDayTime
-type CaseId = String
-type ShakeKey k  = (Generic k,Typeable k,Show k,Eq k,Hashable k,Binary k,NFData k)
-
-class PNLNode a where
-    path :: a -> FilePath
-    execute :: a -> Action ()
-
-instance (ShakeKey k, PNLNode k) => Rule k Double where
-    storedValue _ q = do
-        exists <- IO.doesFileExist $ path q
-        if not exists then return Nothing
-          else fmap Just $ getModTime $ path q
-    equalValue _ _ old new = if old == new then EqualCheap else NotEqual
-
-nodeAction :: (PNLNode a) => a -> Maybe (Action Double) 
-nodeAction k = Just $ do
-      liftIO . createDirectoryIfMissing True . takeDirectory . path $ k
-      execute k
-      liftIO $ getModTime . path $ k
-
-intrustPath :: String -> CaseId -> FilePath
-intrustPath var siteid =
-  case var of
-    "fsindwi" -> printf (base </> "%s/diff/%s.fsindwi.nrrd") siteid siteid
-    "dwiharm" -> printf (base </> "Harmonization-20160728/%s_hmz_iter1.nhdr") siteid
-    "caselist" -> (base </> "caselist.txt")
-  where base = "/data/pnl/INTRuST/"
-  {-where base = "/Users/ryan/partners/data/pnl/INTRuST/"-}
+import PNLPipeline
+import Intrust
 
 outdir = "_data"
-pre name caseid = outdir </> name </> (caseid ++ "-" ++ name) <.> "nrrd"
-nrrdZip out = command_ [] "unu" ["save","-e","gzip","-f","nrrd","-i",out,"-o",out]
-nrrdMask :: FilePath -> FilePath -> FilePath -> Action ()
-nrrdMask mask vol out = do 
-    unit $ cmd "unu 3op ifelse" mask vol "0" "-o" out
-    nrrdZip out
+mkpath name caseid = outdir </> name </> (caseid ++ "-" ++ name) <.> "nrrd"
 
-newtype FA = FA CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FA where
-    path (FA caseid) = pre "fa" caseid
-    execute n@(FA caseid) = do
-        let dwiharm = intrustPath "dwiharm" caseid
+newtype Fa = Fa CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+instance PNLNode Fa where
+    path (Fa caseid) = mkpath "fa" caseid
+    nodeAction n@(Fa caseid) = do
+        let dwiharm = Intrust.path "dwiharm" caseid
         need [dwiharm]
-        withTempFile $ \tensor -> do
-          command_ [] "tend" ["estim","-est","lls","-B","kvp","-knownB0","true","-i",dwiharm,"-o",tensor]
-          command_ [] "tend" ["anvol","-t","-1","-a","fa","-i",tensor,"-o",path n]
-        nrrdZip $ path n
+        Nrrd.fa dwiharm (path n)
 
-newtype FSinDWIMask = FSinDWIMask CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FSinDWIMask where
-    path (FSinDWIMask caseid) = pre "fsindwi-mask" caseid
-    execute n@(FSinDWIMask caseid) = do
-        let fsindwi = intrustPath "fsindwi" caseid
+newtype FsMaskCsf = FsMaskCsf CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+instance PNLNode FsMaskCsf where
+    path (FsMaskCsf caseid) = mkpath "fsindwi-mask" caseid
+    nodeAction n@(FsMaskCsf caseid) = do
+        let fsindwi = Intrust.path "fsindwi" caseid
         need [fsindwi]
-        command_ [] "unu" ["3op","ifelse",fsindwi,"1","0","-o",path n]
-        nrrdZip $ path n
+        Nrrd.makeMask fsindwi (path n)
 
-newtype FSinDWIMaskNoCSF = FSinDWIMaskNoCSF CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FSinDWIMaskNoCSF where
-    path (FSinDWIMaskNoCSF caseid) = pre "fsindwi-nocsf-mask" caseid
-    execute n@(FSinDWIMaskNoCSF caseid) = do
+newtype FsMask = FsMask CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+instance PNLNode FsMask where
+    path (FsMask caseid) = mkpath "fsindwi-nocsf-mask" caseid
+    nodeAction n@(FsMask caseid) = do
         let fsindwi = intrustPath "fsindwi" caseid
+            script = "./src/famask.py" 
         need [fsindwi]
-        command_ [] "./src/famask.py" [fsindwi, path n]
+        command_ [] script [fsindwi, path n]
 
-newtype FAmasked = FAmasked CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FAmasked where
-    path (FAmasked caseid) = pre "fa-masked" caseid
-    execute n@(FAmasked caseid) = do
-        apply [FA caseid] :: Action [Double]
-        apply [FSinDWIMask caseid] :: Action [Double]
-        nrrdMask (path $ FSinDWIMask caseid) (path $ FA caseid) (path n)
+newtype FaMaskedCsf = FaMaskedCsf CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+instance PNLNode FaMaskedCsf where
+    path (FaMaskedCsf x) = mkpath "fa-masked" x
+    nodeAction node@(FaMaskedCsf x) = do
+        apply1 $ Fa x :: Action Double
+        apply1 $ FsMask x :: Action Double
+        Nrrd.mask (path $ FsMask x) (path $ FA x) (path node)
 
-newtype FAmaskedNoCSF = FAmaskedNoCSF CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FAmaskedNoCSF where
-    path (FAmaskedNoCSF caseid) = pre "fa-masked-nocsf" caseid
-    execute n@(FAmaskedNoCSF caseid) = do
-        let fa = FA caseid
-            mask = FSinDWIMaskNoCSF caseid
-        apply [fa] :: Action [Double]
-        apply [mask] :: Action [Double]
-        nrrdMask (path mask) (path fa) (path n)
+newtype FaMasked = FaMasked CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+instance PNLNode FaMasked where
+    path (FaMasked caseid) = mkpath "fa-masked-nocsf" caseid
+    nodeAction node@(FaMasked caseid) = do
+        let fa = Fa caseid
+            mask = FsMask caseid
+        apply1 fa :: Action Double
+        apply1 mask :: Action Double
+        nrrdMask (path mask) (path fa) (path node)
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_data", shakeVerbosity=Chatty} $ do
-    {-action $ do-}
-        {-Stdout caseids <- cmd "cases"-}
-        {-apply [FAmasked caseid | caseid <- lines caseids] :: Action [Double]-}
-        {-apply [FAmaskedNoCSF caseid | caseid <- lines caseids] :: Action [Double]-}
-
     want ["_data/fastats.csv"
          ,"_data/fastats-nocsf.csv"]
 
-    rule (nodeAction :: FSinDWIMask -> Maybe (Action Double))
-    rule (nodeAction :: FSinDWIMaskNoCSF -> Maybe (Action Double))
-    rule (nodeAction :: FA -> Maybe (Action Double))
-    rule (nodeAction :: FAmasked -> Maybe (Action Double))
-    rule (nodeAction :: FAmaskedNoCSF -> Maybe (Action Double))
+    rule (nodeBuildAction :: FsMaskCsf-> Maybe (Action Double))
+    rule (nodeBuildAction :: FsMask -> Maybe (Action Double))
+    rule (nodeBuildAction :: Fa -> Maybe (Action Double))
+    rule (nodeBuildAction :: FaMaskedCsf -> Maybe (Action Double))
+    rule (nodeBuildAction :: FaMasked -> Maybe (Action Double))
+
+    "_data/fastats-withcsf.csv" %> \out -> do
+        Stdout caseids <- cmd "cases"
+        let fas = [FaMaskedCsf caseid | caseid <- lines caseids]
+            script = "src/fastats.j"
+        apply fas  :: Action [Double]
+        need [script]
+        command_ [] script $ [out] ++ (map path fas)
 
     "_data/fastats.csv" %> \out -> do
         Stdout caseids <- cmd "cases"
-        let fas = [FAmasked caseid | caseid <- lines caseids]
+        let fas = [FaMasked caseid | caseid <- lines caseids]
+            script = "src/fastats.j"
         apply fas  :: Action [Double]
-        command_ [] "src/fastats.j" $ [out] ++ (map path fas)
-
-    "_data/fastats-nocsf.csv" %> \out -> do
-        Stdout caseids <- cmd "cases"
-        let fas = [FAmaskedNoCSF caseid | caseid <- lines caseids]
-        apply fas  :: Action [Double]
-        command_ [] "src/fastats.j" $ [out] ++ (map path fas)
+        need [script]
+        command_ [] script $ [out] ++ (map path fas)

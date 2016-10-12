@@ -28,13 +28,13 @@ grid.arrange(g1b, g2b, ncol=1) #
 [[file:report/fiber_lengths.png]]
 
 #+begin_src R :results none :exports none
-fa <- fread('fa_mean_stddev.csv', colClasses=c('factor','numeric','numeric','factor'))
-ids <- fread('scannerids.csv',colClasses=c('factor','factor'))
+fa <- fread('_data/fastats.csv', colClasses=c('factor','factor','numeric','numeric'))
+ids <- fread('src/scannerids.csv',colClasses=c('factor','factor'))
 setkey(fa,siteid)
-setkey(ids,siteid1)
-fau <- fa[ids, nomatch=0]
-setnames(fau,"siteid","siteidorig")
-setnames(fau,"siteidu","siteid")
+setkey(ids,siteid)
+faUnique <- fa[ids, nomatch=0]
+setnames(faUnique,"siteid","siteidOrig")
+setnames(faUnique,"siteidUnique","siteid")
 #+end_src
 
 #+RESULTS:
