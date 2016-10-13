@@ -1,75 +1,98 @@
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
 import PNLPipeline
-import Intrust
+import qualified Intrust
+import qualified Nrrd (mask, fa, makeMask)
+import Data.List (intercalate)
 
 outdir = "_data"
 mkpath name caseid = outdir </> name </> (caseid ++ "-" ++ name) <.> "nrrd"
 
-newtype Fa = Fa CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode Fa where
-    path (Fa caseid) = mkpath "fa" caseid
-    nodeAction n@(Fa caseid) = do
-        let dwiharm = Intrust.path "dwiharm" caseid
-        need [dwiharm]
-        Nrrd.fa dwiharm (path n)
+data FsMask = FsMask CaseId 
+            | FsMaskNoCsf CaseId 
+            deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-newtype FsMaskCsf = FsMaskCsf CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FsMaskCsf where
-    path (FsMaskCsf caseid) = mkpath "fsindwi-mask" caseid
-    nodeAction n@(FsMaskCsf caseid) = do
+instance PNLNode FsMask where
+    path (FsMask caseid) = mkpath "FsMask" caseid
+    path (FsMaskNoCsf caseid) = mkpath "MaskNoCsf" caseid
+    nodeAction n@(FsMask caseid) = do
         let fsindwi = Intrust.path "fsindwi" caseid
         need [fsindwi]
         Nrrd.makeMask fsindwi (path n)
-
-newtype FsMask = FsMask CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FsMask where
-    path (FsMask caseid) = mkpath "fsindwi-nocsf-mask" caseid
-    nodeAction n@(FsMask caseid) = do
-        let fsindwi = intrustPath "fsindwi" caseid
+    nodeAction n@(FsMaskNoCsf caseid) = do
+        let fsindwi = Intrust.path "fsindwi" caseid
             script = "./src/famask.py" 
         need [fsindwi]
         command_ [] script [fsindwi, path n]
 
-newtype FaMaskedCsf = FaMaskedCsf CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FaMaskedCsf where
-    path (FaMaskedCsf x) = mkpath "fa-masked" x
-    nodeAction node@(FaMaskedCsf x) = do
-        apply1 $ Fa x :: Action Double
-        apply1 $ FsMask x :: Action Double
-        Nrrd.mask (path $ FsMask x) (path $ FA x) (path node)
+data DwiType = DwiEd CaseId
+             | DwiHarm CaseId
+            deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-newtype FaMasked = FaMasked CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
-instance PNLNode FaMasked where
-    path (FaMasked caseid) = mkpath "fa-masked-nocsf" caseid
-    nodeAction node@(FaMasked caseid) = do
-        let fa = Fa caseid
-            mask = FsMask caseid
-        apply1 fa :: Action Double
+instance PNLNode DwiType where
+    path (DwiEd x) = Intrust.path "dwied" x
+    path (DwiHarm x) = Intrust.path "dwiharm" x
+    nodeAction n = need [path n]
+
+data FA = FA DwiType (Maybe FsMask)
+    deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+showtype :: Show a => a -> String
+showtype = head . words . show
+showid :: Show a => a -> String
+showid = tail . init . last . words . show
+
+instance PNLNode FA where
+    path (FA dwikey Nothing) = outdir </> "fa" </> (intercalate "-" [showid dwikey, showtype dwikey, "fa"]) <.> "nrrd"
+    path (FA dwikey (Just maskkey)) = outdir </> "fa" </> (intercalate "-" [showid dwikey, showtype dwikey,"fa",showtype maskkey]) <.> "nrrd"
+
+    nodeAction this@(FA dwikey Nothing) = do 
+        apply1 dwikey :: Action Double
+        Nrrd.fa (path dwikey) (path this)
+
+    nodeAction this@(FA dwikey (Just mask)) = do
+        let fa_src = FA dwikey Nothing
+        apply1 fa_src :: Action Double
         apply1 mask :: Action Double
-        nrrdMask (path mask) (path fa) (path node)
+        Nrrd.mask (path mask) (path fa_src) (path this)
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_data", shakeVerbosity=Chatty} $ do
-    want ["_data/fastats.csv"
-         ,"_data/fastats-nocsf.csv"]
+    {-want ["_data/fastats-csf.csv"-}
+         {-,"_data/fastats.csv"-}
+         {-,"_data/fastats-orig.csv"]-}
+    action $ do
+        let key = "003_GNX_007"
+            keys = [FA (d key) (Just (m key)) | d <- [DwiHarm,DwiEd], m <- [FsMask,FsMaskNoCsf]]
+        apply keys :: Action [Double]
 
-    rule (nodeBuildAction :: FsMaskCsf-> Maybe (Action Double))
+    rule (nodeBuildAction :: DwiType -> Maybe (Action Double))
     rule (nodeBuildAction :: FsMask -> Maybe (Action Double))
-    rule (nodeBuildAction :: Fa -> Maybe (Action Double))
-    rule (nodeBuildAction :: FaMaskedCsf -> Maybe (Action Double))
-    rule (nodeBuildAction :: FaMasked -> Maybe (Action Double))
+    rule (nodeBuildAction :: FA -> Maybe (Action Double))
 
-    "_data/fastats-withcsf.csv" %> \out -> do
-        Stdout caseids <- cmd "cases"
-        let fas = [FaMaskedCsf caseid | caseid <- lines caseids]
-            script = "src/fastats.j"
-        apply fas  :: Action [Double]
-        need [script]
-        command_ [] script $ [out] ++ (map path fas)
+    {-"_data/fastats.csv" %> \out -> do-}
+        {-Stdout caseids <- cmd "cases"-}
+        {-let fas = [FaMaskedCsf caseid | caseid <- lines caseids]-}
+            {-script = "src/fastats.j"-}
+        {-apply fas  :: Action [Double]-}
+        {-need [script]-}
+        {-command_ [] script $ [out] ++ (map path fas)-}
 
-    "_data/fastats.csv" %> \out -> do
-        Stdout caseids <- cmd "cases"
-        let fas = [FaMasked caseid | caseid <- lines caseids]
-            script = "src/fastats.j"
-        apply fas  :: Action [Double]
-        need [script]
-        command_ [] script $ [out] ++ (map path fas)
+    {-"_data/fastats-csf.csv" %> \out -> do-}
+        {-Stdout caseids <- cmd "cases"-}
+        {-let fas = [FaMasked caseid | caseid <- lines caseids]-}
+            {-script = "src/fastats.j"-}
+        {-apply fas  :: Action [Double]-}
+        {-need [script]-}
+        {-command_ [] script $ [out] ++ (map path fas)-}
+
+    {-"_data/fastats-orig.csv" %> \out -> do-}
+        {-Stdout caseids <- cmd "cases"-}
+        {-let fas = [FaMaskedO caseid | caseid <- lines caseids]-}
+            {-script = "src/fastats.j"-}
+        {-apply fas  :: Action [Double]-}
+        {-need [script]-}
+        {-command_ [] script $ [out] ++ (map path fas)-}
+
+

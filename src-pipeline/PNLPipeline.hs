@@ -4,21 +4,28 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE ConstraintKinds     #-}
 module PNLPipeline
-  (PNLNode (..)
-  ,nodeBuildAction)
+  (module Development.Shake
+  ,module Development.Shake.Command
+  ,module Development.Shake.FilePath
+  ,module Development.Shake.Classes
+  ,module Development.Shake.Rule
+  ,module GHC.Generics
+  ,PNLNode (..)
+  ,nodeBuildAction
+  ,CaseId
+  )
   where
 
 import Development.Shake
 import Development.Shake.Command
 import Development.Shake.FilePath
 import Development.Shake.Util
-import Development.Shake.Rule
+import Development.Shake.Rule (rule,apply1,apply, Rule(..), EqualCost(..))
 import Development.Shake.Classes
 import Text.Printf
 import           GHC.Generics
 import Data.Time (UTCTime (..), utctDayTime)
 import System.Directory as IO
-import Nrrd
 
 
 -- Shake rules
