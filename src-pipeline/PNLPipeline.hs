@@ -10,9 +10,9 @@ module PNLPipeline
   ,module Development.Shake.Classes
   ,module Development.Shake.Rule
   ,module GHC.Generics
-  ,PNLNode (..)
-  ,nodeBuildAction
   ,CaseId
+  ,BuildKey (..)
+  ,buildKey
   )
   where
 
@@ -28,40 +28,30 @@ import Data.Time (UTCTime (..), utctDayTime)
 import System.Directory as IO
 
 
--- Shake rules
---
-
 getModTime :: FilePath -> IO Double
 getModTime = fmap utcToDouble . getModificationTime
   where
     utcToDouble = fromRational . toRational . utctDayTime
+
 type CaseId = String
 type ShakeKey k  = (Generic k,Typeable k,Show k,Eq k,Hashable k,Binary k,NFData k)
 
-class PNLNode a where
-    path :: a -> FilePath
-    nodeAction :: a -> Action ()
+class BuildKey a where
+  path :: a -> FilePath
+  build :: a -> Maybe (Action ())
+  build _ = Nothing
 
-instance (ShakeKey k, PNLNode k) => Rule k Double where
+instance (ShakeKey k, BuildKey k) => Rule k Double where
     storedValue _ q = do
         exists <- IO.doesFileExist $ path q
         if not exists then return Nothing
           else fmap Just $ getModTime $ path q
     equalValue _ _ old new = if old == new then EqualCheap else NotEqual
 
-nodeBuildAction :: (PNLNode a) => a -> Maybe (Action Double)
-nodeBuildAction k = Just $ do
+buildKey :: BuildKey a => a -> Maybe (Action Double)
+buildKey k = case (build k) of
+  Nothing -> Just $ liftIO $ getModTime . path $ k
+  (Just action) -> Just $ do
       liftIO . createDirectoryIfMissing True . takeDirectory . path $ k
-      nodeAction k
+      action
       liftIO $ getModTime . path $ k
-
--- PNL types
---
-
--- newtype WmparcInDwi = WmparcInDwi CaseId deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
--- instance PNLNode WmparcInDwi where
---   path env (WmparcInDwi caseid) = 
---   nodeAction n@(WmparcInDwi caseid) = do
---     let script = "src/WmparcInDwi/fs2dwi_T2.sh"
---     need[script]
---     command_ [] script []
