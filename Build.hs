@@ -66,8 +66,8 @@ instance BuildKey (FA, CaseId) where
 data FaStats = FaStats DwiType FsMask
         deriving (Generic,Typeable,Eq,Hashable,Binary,NFData)
 
-instance FaStats Show where
-    show (FaStats d m) = intercalate "-" ["FaStats",d,m]
+instance Show FaStats where
+    show (FaStats d m) = intercalate "-" ["FaStats", show d, show m]
 
 instance BuildKey FaStats where
   path k = outdir </> "fastats" </> (show k) <.> "csv"
@@ -100,26 +100,8 @@ main = shakeArgs shakeOptions{shakeFiles=outdir, shakeVerbosity=Chatty} $ do
     rule (buildKey :: (FA, CaseId) -> Maybe (Action Double))
     rule (buildKey :: FaStats -> Maybe (Action Double))
 
-    {-"_data/fastats.csv" %> \out -> do-}
-        {-Stdout caseids <- cmd "cases"-}
-        {-let fas = [FaMaskedCsf caseid | caseid <- lines caseids]-}
-            {-script = "src/fastats.j"-}
-        {-apply fas  :: Action [Double]-}
-        {-need [script]-}
-        {-command_ [] script $ [out] ++ (map path fas)-}
-
-    {-"_data/fastats-csf.csv" %> \out -> do-}
-        {-Stdout caseids <- cmd "cases"-}
-        {-let fas = [FaMasked caseid | caseid <- lines caseids]-}
-            {-script = "src/fastats.j"-}
-        {-apply fas  :: Action [Double]-}
-        {-need [script]-}
-        {-command_ [] script $ [out] ++ (map path fas)-}
-
-    {-"_data/fastats-orig.csv" %> \out -> do-}
-        {-Stdout caseids <- cmd "cases"-}
-        {-let fas = [FaMaskedO caseid | caseid <- lines caseids]-}
-            {-script = "src/fastats.j"-}
-        {-apply fas  :: Action [Double]-}
-        {-need [script]-}
-        {-command_ [] script $ [out] ++ (map path fas)-}
+    ["_data/fiber_counts.csv",
+     "_data/fiber_lengths_sample.csv"] &%> \[countsCsv, lengthsCsv] -> do
+      need ["src/mkcsvs.py"]
+      getDirectoryFiles "_data/tractlengths" ["*.txt"]
+      unit $ cmd "src/mkcsvs.py"
