@@ -84,9 +84,8 @@ instance BuildKey FaStats where
 -- main
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles=outdir, shakeVerbosity=Chatty} $ do
-    {-want ["_data/fastats-csf.csv"-}
-         {-,"_data/fastats.csv"-}
-         {-,"_data/fastats-orig.csv"]-}
+    want ["_data/fiber_lengths_sample.csv",
+          "_data/fiber_counts.csv"]
     action $ do
         let x = "003_GNX_007"
             keys = [FaStats d m
