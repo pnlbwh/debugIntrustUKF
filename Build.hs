@@ -64,7 +64,10 @@ instance BuildKey (FA, CaseId) where
 ---------------------------------------------------------------
 -- FA Stats
 data FaStats = FaStats DwiType FsMask
-        deriving (Generic,Typeable,Eq,Show,Hashable,Binary,NFData)
+        deriving (Generic,Typeable,Eq,Hashable,Binary,NFData)
+
+instance FaStats Show where
+    show (FaStats d m) = intercalate "-" ["FaStats",d,m]
 
 instance BuildKey FaStats where
   path k = outdir </> "fastats" </> (show k) <.> "csv"
