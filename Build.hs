@@ -67,15 +67,25 @@ data FsMask = FsMask
 instance BuildKey (FsMask, CaseId) where
     path (k, x) = keyToPath "famask" k "nrrd" x
 
-    build n@(FsMask, caseid) = Just $ do
+    build out@(FsMask, caseid) = Just $ do
         let fsindwi = Intrust.path "fsindwi" caseid
-        need [fsindwi]
-        Nrrd.makeMask fsindwi (path n)
-    build n@(FsMaskNoCsf, caseid) = Just $ do
+            dwi = (DwiEd, caseid)
+        need [fsindwi, "src/downsampleNN.sh"]
+        apply1 dwi :: Action Double
+        Nrrd.makeMask fsindwi (path out)
+        command_ [] "src/downsampleNN.sh" ["-i", path out
+                                          ,"-r", path dwi
+                                          ,"-o", path out]
+    build out@(FsMaskNoCsf, caseid) = Just $ do
         let fsindwi = Intrust.path "fsindwi" caseid
+            dwi = (DwiEd, caseid)
             script = "./src/famask.py"
-        need [fsindwi]
-        command_ [] script [fsindwi, path n]
+        apply1 dwi :: Action Double
+        need [fsindwi, "src/downsampleNN.sh"]
+        command_ [] script [fsindwi, path out]
+        command_ [] "src/downsampleNN.sh" ["-i", path out
+                                          ,"-r", path dwi
+                                          ,"-o", path out]
 
 ---------------------------------------------------------------
 -- FA
