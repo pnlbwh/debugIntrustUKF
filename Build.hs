@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 import           Data.List   (intercalate)
 import qualified Intrust
 import qualified Nrrd        (fa, makeMask, mask)
@@ -10,6 +9,45 @@ import           PNLPipeline
 outdir = "_data"
 keyToPath :: Show k => FilePath -> k -> String -> CaseId -> FilePath
 keyToPath dir key ext x = outdir </> dir </> (x++"-"++show key) <.> ext
+
+showKey :: Show k => k -> String
+showKey key = intercalate "-" (words . show $ key)
+
+---------------------------------------------------------------
+-- UKFType
+
+data UkfType = UkfCpp | UkfMatlab
+             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+---------------------------------------------------------------
+-- UKF
+
+data UKF = UKF DwiType UkfType
+             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+instance BuildKey (UKF, CaseId) where
+  path (UKF DwiHarm UkfCpp, caseid) = Intrust.path "ukf_dwiharm_cpp" caseid
+  path _ = error "No intrust result for this ukf type"
+
+
+---------------------------------------------------------------
+-- FiberLengths
+
+newtype FiberLengths = FiberLengths UKF
+             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+instance BuildKey (FiberLengths, CaseId) where
+  path (FiberLengths ukf@(UKF DwiHarm UkfCpp), caseid) = outdir </> "fiberlengths"
+    </> caseid ++ "-" ++ "FiberLengths" ++ "-" ++ showKey ukf ++ ".txt"
+
+  build out@(FiberLengths ukf@(UKF DwiHarm UkfCpp), caseid) = Just $ do
+    let tmpvtk = "/tmp/" ++ caseid ++ ".vtk"
+        vtkgz = path (ukf, caseid)
+    apply1 (ukf, caseid) :: Action Double
+    withTempFile $ \tmpvtk -> do
+      command_ [] "gunzip" ["-c", vtkgz, tmpvtk]
+      need ["src/fiberlengths.j"]
+      command_ [] "src/fiberlengths.j" [tmpvtk, path out]
 
 ---------------------------------------------------------------
 -- DWI
@@ -87,8 +125,7 @@ main = shakeArgs shakeOptions{shakeFiles=outdir, shakeVerbosity=Chatty} $ do
     want ["_data/fiber_lengths_sample.csv",
           "_data/fiber_counts.csv"]
     action $ do
-        let x = "003_GNX_007"
-            keys = [FaStats d m
+        let keys = [FaStats d m
                    | d <- [DwiHarm, DwiEd]
                    , m <- [FsMask, FsMaskNoCsf]
                    ]

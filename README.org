@@ -1,8 +1,8 @@
 #+PROPERTY: header-args :session
 
 #+begin_src R :results none :exports none
-  library(data.table)
-  library(ggplot2)
+  require(data.table)
+  require(ggplot2)
   require(gridExtra)
   mytheme = theme(
   legend.text=element_text(size=17),
@@ -35,9 +35,6 @@ grid.arrange(g1b, g2b, ncol=1) #
 [[file:report/fiber_lengths.png]]
 
 #+begin_src R :results graphics :file report/fa.png :width 1500 :height 1500 :exports results
-require(data.table)
-require(ggplot2)
-require(tools)
 csvfiles <- Sys.glob('_data/fastats/*csv')
 plots <- list()
 i <- 1
