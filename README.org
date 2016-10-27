@@ -4,30 +4,39 @@
   require(data.table)
   require(ggplot2)
   require(gridExtra)
+
   mytheme = theme(
   legend.text=element_text(size=17),
   #legend.key = element_rect(size = 5),
   legend.key.size = unit(2.0, 'lines'),
   plot.title = element_text(size=22),
   axis.title=element_text(size=17),
-  axis.text=element_text(size=13)
-  )
+  axis.text=element_text(size=13))
+
+  scanners <- fread('src/intrust_scanners.csv', select=c('Session','Scanner'))
+  scanners$Scanner <- factor(scanners$Scanner)
+  setkey(scanners, Session)
+
 #+end_src
 
 #+begin_src R :file report/fiber_counts.png :results graphics :height 1500 :width 750 :exports results
   fc <- fread('_data/fiber_counts.csv', colClasses=c('factor','factor','numeric'))
-  fl <- fread('_data/fiber_lengths_sample.csv', colClasses=c('factor','factor','numeric'))
-  g1 <- ggplot(fc, aes(x=count, fill=ukftype)) + geom_density(alpha=0.3) + ggtitle('Whole Brain Fiber Count: Matlab vs C++') + mytheme
-  g2 <- ggplot(fc[ukftype=="mat"], aes(x=count, fill=siteid)) + geom_density(alpha=0.3) + ggtitle('Whole Brain Fiber Count by Site: Matlab') + mytheme
-  grid.arrange(g1, g2, ncol=1, nrow=2)
+  setkey(fc,caseid)
+  fc <- fc[scanners, nomatch=0]
+  gc <- ggplot(fc, aes(x=count, fill=ukftype)) + geom_density(alpha=0.7) + ggtitle('Whole Brain Fiber Count: Matlab vs C++') + mytheme
+  gc.matlab <- ggplot(fc[ukftype=="DwiEd-UkfMatlab"], aes(x=count, fill=Scanner)) + geom_density(alpha=0.7) + ggtitle('Whole Brain Fiber Count by Site: Matlab') + mytheme #
+  grid.arrange(gc, gc.matlab, ncol=1, nrow=2)
 #+end_src
 
 #+RESULTS:
 [[file:report/fiber_counts.png]]
 
 #+begin_src R :session :file report/fiber_lengths.png :results graphics :width 750 :height 1500 :exports results
-g1b <- ggplot(fl[ukftype=="mat"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: Matlab") + mytheme
-g2b <- ggplot(fl[ukftype=="vtk"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: C++") + mytheme
+fl <- fread('_data/fiber_lengths_sample.csv', colClasses=c('factor','factor','numeric'))
+setkey(fl,caseid)
+fl <- fl[scanners, nomatch=0]
+g1b <- ggplot(fl[ukftype=="DwiEd-UkfMatlab"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: Matlab") + mytheme
+g2b <- ggplot(fl[ukftype=="DwiHarm-UkfCpp"], aes(x=length, fill=siteid)) + geom_density(alpha=0.3) + xlim(c(1,200)) + ggtitle("Fiber Lengths by Site: C++") + mytheme
 grid.arrange(g1b, g2b, ncol=1) #
 #+end_src
 
@@ -40,10 +49,7 @@ plots <- list()
 i <- 1
 for (csvfile in csvfiles) {
   fa_ <- fread(csvfile, colClasses=c('factor','factor','factor','numeric','numeric'))
-  scanners <- fread('src/intrust_scanners.csv', select=c('Session','Scanner'))
-  scanners$Scanner <- factor(scanners$Scanner)
   setkey(fa_,caseid)
-  setkey(scanners, Session)
   fa <- fa_[scanners, nomatch=0]
   plots[[i]] <- ggplot(fa, aes(x=mean, fill=Scanner)) + geom_density(alpha=0.7) + ggtitle(file_path_sans_ext(basename(csvfile))) + mytheme + xlim(0,0.06)
   i <- i + 1
