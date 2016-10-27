@@ -14,11 +14,11 @@ outdir = "_data"
 {-showKey key = intercalate "-" (words . show $ key)-}
 
 keyToFile :: Show k => Bool -> k -> String -> String
-keyToFile hasKey key ext  =
-    let 
+keyToFile hasCaseId key ext  =
+    let
        keywords = map (filter (/='"')) (words . show $ key)
        caseid = last keywords
-       key' = if True then intercalate "-" (caseid:init keywords)
+       key' = if hasCaseId then intercalate "-" (caseid:init keywords)
               else intercalate "-" keywords
     in
        if null ext then key' else key' <.> ext
@@ -57,7 +57,7 @@ instance BuildKey FiberLengths where
           need ["src/fiberlengths.j"]
           command_ [] "src/fiberlengths.j" [tmpvtk, path out]
     (DwiEd, UkfMatlab) -> Nothing
-      
+
 
 ---------------------------------------------------------------
 -- DWI
