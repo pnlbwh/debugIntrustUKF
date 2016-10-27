@@ -16,7 +16,8 @@ cabal-version:       >=1.10
 executable pipeline
   hs-source-dirs:      src-pipeline, .
   main-is:             Build.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-I0
+  -- ghc-options:         -threaded -rtsopts -with-rtsopts=-I0
+  ghc-options:         -rtsopts -with-rtsopts=-I0
   build-depends:       base
                      , shake
                      , time

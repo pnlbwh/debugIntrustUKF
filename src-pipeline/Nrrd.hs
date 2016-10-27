@@ -15,7 +15,7 @@ gzip out = command_ [] "unu" ["save","-e","gzip","-f","nrrd","-i",out,"-o",out]
 
 mask :: FilePath -> FilePath -> FilePath -> Action ()
 mask mask vol out = do
-    unit $ cmd "unu 3op ifelse" mask vol "0" "-o" out
+    unit $ cmd "unu 3op -w 1 ifelse" mask vol "0" "-o" out
     gzip out
 
 fa :: FilePath -> FilePath -> Action ()

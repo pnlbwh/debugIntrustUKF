@@ -7,78 +7,93 @@ import qualified Nrrd        (fa, makeMask, mask)
 import           PNLPipeline
 
 outdir = "_data"
-keyToPath :: Show k => FilePath -> k -> String -> CaseId -> FilePath
-keyToPath dir key ext x = outdir </> dir </> (x++"-"++show key) <.> ext
+{-keyToPath :: Show k => FilePath -> k -> String -> CaseId -> FilePath-}
+{-keyToPath dir key ext x = outdir </> dir </> (x++"-"++show key) <.> ext-}
 
-showKey :: Show k => k -> String
-showKey key = intercalate "-" (words . show $ key)
+{-showKey :: Show k => k -> String-}
+{-showKey key = intercalate "-" (words . show $ key)-}
 
----------------------------------------------------------------
--- UKFType
+keyToFile :: Show k => Bool -> k -> String -> String
+keyToFile hasKey key ext  =
+    let 
+       keywords = map (filter (/='"')) (words . show $ key)
+       caseid = last keywords
+       key' = if True then intercalate "-" (caseid:init keywords)
+              else intercalate "-" keywords
+    in
+       if null ext then key' else key' <.> ext
 
-data UkfType = UkfCpp | UkfMatlab
-             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
 ---------------------------------------------------------------
 -- UKF
 
-data UKF = UKF DwiType UkfType
+data UkfType = UkfCpp | UkfMatlab
              deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-instance BuildKey (UKF, CaseId) where
-  path (UKF DwiHarm UkfCpp, caseid) = Intrust.path "ukf_dwiharm_cpp" caseid
+data UKF = UKF DwiType UkfType CaseId
+             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+instance BuildKey UKF where
+  path (UKF DwiHarm UkfCpp caseid) = Intrust.path "ukf_dwiharm_cpp" caseid
   path _ = error "No intrust result for this ukf type"
 
 
 ---------------------------------------------------------------
 -- FiberLengths
 
-newtype FiberLengths = FiberLengths UKF
+data FiberLengths = FiberLengths DwiType UkfType CaseId
              deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-instance BuildKey (FiberLengths, CaseId) where
-  path (FiberLengths ukf@(UKF DwiHarm UkfCpp), caseid) = outdir </> "fiberlengths"
-    </> caseid ++ "-" ++ "FiberLengths" ++ "-" ++ showKey ukf ++ ".txt"
+instance BuildKey FiberLengths where
+  path key = outdir </> "fiberlengths" </> keyToFile True key "txt"
 
-  build out@(FiberLengths ukf@(UKF DwiHarm UkfCpp), caseid) = Just $ do
-    let tmpvtk = "/tmp/" ++ caseid ++ ".vtk"
-        vtkgz = path (ukf, caseid)
-    apply1 (ukf, caseid) :: Action Double
-    withTempFile $ \tmpvtk -> do
-      command_ [] "gunzip" ["-c", vtkgz, tmpvtk]
-      need ["src/fiberlengths.j"]
-      command_ [] "src/fiberlengths.j" [tmpvtk, path out]
+  build out@(FiberLengths dwitype ukftype caseid) = case (dwitype, ukftype) of
+    (DwiHarm, UkfCpp) -> Just $ do
+        let tmpvtk = "/tmp/" ++ caseid ++ ".vtk"
+            ukf = UKF dwitype ukftype caseid
+        apply1 ukf :: Action Double
+        withTempFile $ \tmpvtk -> do
+          unit $ cmd Shell "gunzip -c" (path ukf) ">" tmpvtk
+          need ["src/fiberlengths.j"]
+          command_ [] "src/fiberlengths.j" [tmpvtk, path out]
+    (DwiEd, UkfMatlab) -> Nothing
+      
 
 ---------------------------------------------------------------
 -- DWI
 data DwiType = DwiEd | DwiHarm
              deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-instance BuildKey (DwiType, CaseId) where
-  path (DwiEd, x) = Intrust.path "dwied" x
-  path (DwiHarm, x) = Intrust.path "dwiharm" x
+data Dwi = Dwi DwiType CaseId
+             deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+
+instance BuildKey Dwi where
+  path (Dwi DwiEd x) = Intrust.path "dwied" x
+  path (Dwi DwiHarm x) = Intrust.path "dwiharm" x
 
 ---------------------------------------------------------------
 -- FA Mask
-data FsMask = FsMask
-            | FsMaskNoCsf
-            deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
+data FaMaskType = FsMask | FsMaskNoCsf
+                deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-instance BuildKey (FsMask, CaseId) where
-    path (k, x) = keyToPath "famask" k "nrrd" x
+data FaMask = FaMask FaMaskType CaseId
+                deriving (Generic,Typeable,Show,Eq,Hashable,Binary,NFData)
 
-    build out@(FsMask, caseid) = Just $ do
+instance BuildKey FaMask where
+    path key = outdir </> "famask" </> keyToFile True key "nrrd"
+
+    build out@(FaMask FsMask caseid) = Just $ do
         let fsindwi = Intrust.path "fsindwi" caseid
-            dwi = (DwiEd, caseid)
+            dwi = Dwi DwiEd caseid
         need [fsindwi, "src/downsampleNN.sh"]
         apply1 dwi :: Action Double
         Nrrd.makeMask fsindwi (path out)
         command_ [] "src/downsampleNN.sh" ["-i", path out
                                           ,"-r", path dwi
                                           ,"-o", path out]
-    build out@(FsMaskNoCsf, caseid) = Just $ do
+    build out@(FaMask FsMaskNoCsf caseid) = Just $ do
         let fsindwi = Intrust.path "fsindwi" caseid
-            dwi = (DwiEd, caseid)
+            dwi = Dwi DwiEd caseid
             script = "./src/famask.py"
         apply1 dwi :: Action Double
         need [fsindwi, "src/downsampleNN.sh"]
@@ -89,40 +104,42 @@ instance BuildKey (FsMask, CaseId) where
 
 ---------------------------------------------------------------
 -- FA
-data FA = FA DwiType (Maybe FsMask)
+data FA = FA DwiType (Maybe FaMaskType) CaseId
         deriving (Generic,Typeable,Eq,Hashable,Binary,NFData)
+
 instance Show FA where
-  show (FA dwitype Nothing) = "FA-" ++ (show dwitype)
-  show (FA dwitype (Just x)) = intercalate "-" ["FA", show dwitype, show x]
+  show (FA dwitype Nothing caseid) = intercalate "-" [caseid, "FA", show dwitype]
+  show (FA dwitype (Just m) caseid) = intercalate "-" [caseid, "FA", show dwitype, show m]
 
-instance BuildKey (FA, CaseId) where
-  path (key, x) = keyToPath "fa" key "nrrd" x
+instance BuildKey FA where
+  path key = outdir </> "fa" </> show key <.> "nrrd"
 
-  build this@((FA dwi Nothing), x) = Just $ do
-    apply1 (dwi, x) :: Action Double
-    Nrrd.fa (path (dwi, x)) (path this)
+  build this@(FA dwi Nothing caseid) = Just $ do
+    apply1 (Dwi dwi caseid) :: Action Double
+    Nrrd.fa (path (Dwi dwi caseid)) (path this)
 
-  build this@((FA dwi (Just mask)), x) = Just $ do
-    let faSrc = FA dwi Nothing
-    apply1 (faSrc, x) :: Action Double
-    apply1 (mask, x) :: Action Double
-    Nrrd.mask (path (mask,x)) (path (faSrc,x)) (path this)
+  build this@(FA dwi (Just masktype) caseid) = Just $ do
+    let fa = FA dwi Nothing caseid
+        famask = FaMask masktype caseid
+    apply1 fa :: Action Double
+    apply1 famask :: Action Double
+    Nrrd.mask (path famask) (path fa) (path this)
 
 
 ---------------------------------------------------------------
 -- FA Stats
-data FaStats = FaStats DwiType FsMask
-        deriving (Generic,Typeable,Eq,Hashable,Binary,NFData)
+data FaStats = FaStats DwiType FaMaskType
+        deriving (Show,Generic,Typeable,Eq,Hashable,Binary,NFData)
 
-instance Show FaStats where
-    show (FaStats d m) = intercalate "-" ["FaStats", show d, show m]
+{-instance Show FaStats where-}
+    {-show (FaStats d m) = intercalate "-" ["FaStats", show d, show m]-}
 
 instance BuildKey FaStats where
-  path k = outdir </> "fastats" </> (show k) <.> "csv"
+  path k = outdir </> "fastats" </> keyToFile False k "csv"
 
   build this@(FaStats dwi mask) = Just $ do
     Stdout caselist <- cmd "cases"
-    let fas = [(FA dwi (Just mask), x) | x <- lines caselist]
+    let fas = [FA dwi (Just mask) x | x <- lines caselist]
     apply fas :: Action [Double]
     need ["src/fastats.j"]
     command_ [] "src/fastats.j" $ [path this] ++ (map path fas)
@@ -134,20 +151,32 @@ main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles=outdir, shakeVerbosity=Chatty} $ do
     want ["_data/fiber_lengths_sample.csv",
           "_data/fiber_counts.csv"]
+
     action $ do
-        let keys = [FaStats d m
+        let fastats = [FaStats d m
                    | d <- [DwiHarm, DwiEd]
                    , m <- [FsMask, FsMaskNoCsf]
                    ]
-        apply keys :: Action [Double]
-
-    rule (buildKey :: (DwiType, CaseId) -> Maybe (Action Double))
-    rule (buildKey :: (FsMask, CaseId) -> Maybe (Action Double))
-    rule (buildKey :: (FA, CaseId) -> Maybe (Action Double))
-    rule (buildKey :: FaStats -> Maybe (Action Double))
+        apply fastats :: Action [Double]
+        {-Stdout caseids <- cmd "cases"-}
+        {-let fiberlengths = [FiberLengths DwiEd UkfMatlab caseid | caseid <- take 5 . lines $ caseids]-}
+        {-apply fiberlengths :: Action [Double]-}
 
     ["_data/fiber_counts.csv",
      "_data/fiber_lengths_sample.csv"] &%> \[countsCsv, lengthsCsv] -> do
-      need ["src/mkcsvs.py"]
-      getDirectoryFiles "_data/tractlengths" ["*.txt"]
-      unit $ cmd "src/mkcsvs.py"
+      Stdout caselist <- cmd "cases"
+      let matlabFiberLengths = [FiberLengths DwiEd UkfMatlab caseid | caseid <- lines caselist ]
+          cppFiberLengths = [FiberLengths DwiHarm UkfCpp caseid | caseid <- lines caselist ]
+          fiberLengths = matlabFiberLengths ++ cppFiberLengths
+      apply $ fiberLengths :: Action [Double]
+      need ["src/summarize-fiberlengths.py"]
+      unit $ cmd "src/summarize-fiberlengths.py" (map path fiberLengths)
+
+    rule (buildKey :: Dwi -> Maybe (Action Double))
+    rule (buildKey :: FaMask -> Maybe (Action Double))
+    rule (buildKey :: FA -> Maybe (Action Double))
+    rule (buildKey :: FaStats -> Maybe (Action Double))
+    rule (buildKey :: UKF -> Maybe (Action Double))
+    rule (buildKey :: FiberLengths -> Maybe (Action Double))
+
+
